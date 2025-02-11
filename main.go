@@ -25,8 +25,14 @@ func main() {
 	http.HandleFunc("/{shorten}", func(w http.ResponseWriter, r *http.Request) {
 		shortenUrl := r.PathValue("shorten")
 		fmt.Println(shortenUrl)
-		io.WriteString(w, "should redirect")
-		io.WriteString(w, fmt.Sprintf("hello %s", shortenUrl))
+
+		longUrl := urlMap[shortenUrl]
+
+		if longUrl == "" {
+			return
+		}
+		fmt.Println(longUrl)
+		http.Redirect(w, r, longUrl, http.StatusFound)
 	})
 
 	http.HandleFunc("/create-shorten", func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +50,11 @@ func main() {
 		}
 
 		hash := sha256.Sum256([]byte(data.LongUrl))
-		fmt.Println(hex.EncodeToString(hash[:]))
+		var shortenUrl string = hex.EncodeToString(hash[:])[:7]
+
+		urlMap[shortenUrl] = data.LongUrl
+
+		fmt.Println(shortenUrl)
 	})
 
 	fmt.Println("Listening on http://localhost:8000")
