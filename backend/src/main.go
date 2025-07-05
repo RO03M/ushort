@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"urlshort/src/db"
+
+	"github.com/redis/go-redis/v9"
+
+	_ "github.com/lib/pq"
 )
 
 type RequestData struct {
@@ -18,8 +25,51 @@ var urlMap = make(map[string]string)
 func main() {
 	http.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("teste")
+		client := redis.NewClient(&redis.Options{
+			Addr:     "localhost:6379",
+			Password: "", // No password set
+			DB:       0,  // Use default DB
+			Protocol: 2,  // Connection protocol
+		})
 
-		io.WriteString(w, "Hello there!")
+		context := context.Background()
+		err := client.Set(context, "foo", "bar", 0).Err()
+
+		if err != nil {
+			panic(err)
+		}
+
+		val, err := client.Get(context, "foo").Result()
+
+		io.WriteString(w, val)
+	})
+
+	http.HandleFunc("GET /pg", func(w http.ResponseWriter, r *http.Request) {
+		db, err := sql.Open("postgres", "host=localhost port=5432 user=admin password=admin dbname=ushort sslmode=disable")
+
+		if err != nil {
+			io.WriteString(w, fmt.Sprintf("Failed to connect to the database :( %s", err))
+			return
+		}
+
+		err = db.Ping()
+		defer db.Close()
+		fmt.Println(err)
+
+		io.WriteString(w, "return")
+	})
+
+	http.HandleFunc("GET /urls", func(w http.ResponseWriter, r *http.Request) {
+		urls, err := db.GetUrls()
+
+		if err != nil {
+			io.WriteString(w, "There was an error")
+			return
+		}
+
+		response, err := json.Marshal(urls)
+
+		io.Writer.Write(w, response)
 	})
 
 	http.HandleFunc("/{shorten}", func(w http.ResponseWriter, r *http.Request) {
