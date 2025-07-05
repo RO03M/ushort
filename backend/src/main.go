@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"urlshort/src/db"
+	"urlshort/src/modules/urls"
 
 	"github.com/redis/go-redis/v9"
 
@@ -85,10 +84,11 @@ func main() {
 		http.Redirect(w, r, longUrl, http.StatusFound)
 	})
 
-	http.HandleFunc("/create-shorten", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			return
-		}
+	http.HandleFunc("POST /create-shorten", func(w http.ResponseWriter, r *http.Request) {
+
+		// if r.Method != http.MethodPost {
+		// 	return
+		// }
 
 		var data RequestData
 		err := json.NewDecoder(r.Body).Decode(&data)
@@ -99,12 +99,16 @@ func main() {
 			return
 		}
 
-		hash := sha256.Sum256([]byte(data.LongUrl))
-		var shortenUrl string = hex.EncodeToString(hash[:])[:7]
+		id := urls.CreateUrl(data.LongUrl)
 
-		urlMap[shortenUrl] = data.LongUrl
+		io.WriteString(w, fmt.Sprint(id))
 
-		fmt.Println(shortenUrl)
+		// hash := sha256.Sum256([]byte(data.LongUrl))
+		// var shortenUrl string = hex.EncodeToString(hash[:])[:7]
+
+		// urlMap[shortenUrl] = data.LongUrl
+
+		// fmt.Println(shortenUrl)
 	})
 
 	fmt.Println("Listening on http://localhost:8000")

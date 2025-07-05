@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 
 	_ "github.com/lib/pq"
@@ -30,6 +31,8 @@ func GetUrls() ([]Url, error) {
 	var urls []Url
 
 	rows, err := db.Query(`SELECT id, url, alias FROM urls`)
+
+	fmt.Println(rows.Columns())
 
 	if err != nil {
 		log.Fatalf("Unable to execute the query. %v", err)
