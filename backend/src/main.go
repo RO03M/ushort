@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 	"urlshort/src/db"
 	"urlshort/src/modules/urls"
 
@@ -21,24 +22,54 @@ type RequestData struct {
 
 var urlMap = make(map[string]string)
 
-func main() {
-	http.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("teste")
-		client := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
-			Password: "", // No password set
-			DB:       0,  // Use default DB
-			Protocol: 2,  // Connection protocol
-		})
+var client = redis.NewClient(&redis.Options{
+	Addr:     "localhost:6379",
+	Password: "", // No password set
+	DB:       0,  // Use default DB
+	Protocol: 2,  // Connection protocol
+})
 
-		context := context.Background()
-		err := client.Set(context, "foo", "bar", 0).Err()
+func main() {
+
+	http.HandleFunc("GET /{shorten}", func(w http.ResponseWriter, r *http.Request) {
+		shortenUrl := r.PathValue("shorten")
+		start := time.Now()
+
+		ctx := context.Background()
+		cachedUrl, err := client.Get(ctx, fmt.Sprintf("url:alias:%s", shortenUrl)).Result()
+
+		if err == nil {
+			var url urls.Url
+			err := json.Unmarshal([]byte(cachedUrl), &url)
+
+			if err == nil && url.Url != "" {
+				http.Redirect(w, r, url.Url, http.StatusMovedPermanently)
+				fmt.Println("elapsed cache", time.Since(start))
+				return
+			}
+		}
+
+		url := urls.FindUrlByAlias(shortenUrl)
+
+		if url == nil {
+			io.WriteString(w, "No ushort found :(")
+			return
+		}
+
+		http.Redirect(w, r, url.Url, http.StatusMovedPermanently)
+		fmt.Println("elapsed total", time.Since(start))
+	})
+	http.HandleFunc("GET /hello", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("teste")
+
+		ctx := context.Background()
+		err := client.Set(ctx, "foo", "bar", 0).Err()
 
 		if err != nil {
 			panic(err)
 		}
 
-		val, err := client.Get(context, "foo").Result()
+		val, err := client.Get(ctx, "foo").Result()
 
 		io.WriteString(w, val)
 	})
@@ -66,30 +97,12 @@ func main() {
 			return
 		}
 
-		response, err := json.Marshal(urls)
+		response, _ := json.Marshal(urls)
 
 		io.Writer.Write(w, response)
 	})
 
-	http.HandleFunc("/{shorten}", func(w http.ResponseWriter, r *http.Request) {
-		shortenUrl := r.PathValue("shorten")
-		fmt.Println(shortenUrl)
-
-		longUrl := urlMap[shortenUrl]
-
-		if longUrl == "" {
-			return
-		}
-		fmt.Println(longUrl)
-		http.Redirect(w, r, longUrl, http.StatusFound)
-	})
-
 	http.HandleFunc("POST /create-shorten", func(w http.ResponseWriter, r *http.Request) {
-
-		// if r.Method != http.MethodPost {
-		// 	return
-		// }
-
 		var data RequestData
 		err := json.NewDecoder(r.Body).Decode(&data)
 
@@ -99,16 +112,13 @@ func main() {
 			return
 		}
 
-		id := urls.CreateUrl(data.LongUrl)
+		url := urls.CreateUrl(data.LongUrl)
+		jsonUrl, _ := json.Marshal(url)
 
-		io.WriteString(w, fmt.Sprint(id))
+		ctx := context.Background()
+		client.Set(ctx, fmt.Sprintf("url:alias:%s", url.Alias), string(jsonUrl), time.Minute*100)
 
-		// hash := sha256.Sum256([]byte(data.LongUrl))
-		// var shortenUrl string = hex.EncodeToString(hash[:])[:7]
-
-		// urlMap[shortenUrl] = data.LongUrl
-
-		// fmt.Println(shortenUrl)
+		io.Writer.Write(w, jsonUrl)
 	})
 
 	fmt.Println("Listening on http://localhost:8000")
